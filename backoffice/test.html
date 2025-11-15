@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Test</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; margin: 10px 0; }
+    .message { margin: 5px 0; padding: 5px; background: #f0f0f0; border-radius: 3px; }
+    input { padding: 5px; width: 300px; }
+    button { padding: 5px 10px; }
+  </style>
+</head>
+<body>
+  <h1>WebSocket Test</h1>
+  
+  <div>
+    <label>JWT Token:</label><br>
+    <input type="text" id="tokenInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbWh1aWRoM3MwMDAwd2VyY3htYXR1eGNuIiwicm9sZSI6IlNUVURFTlQiLCJleHAiOjE3NjM2MzA1OTMsImlhdCI6MTc2MzAyNTc5M30.4O5d38f9ldwtdkWwdacuH-9zbg3vcf_IYjjlmrR5H4o" style="width: 500px;" />
+    <button onclick="authenticate()">Connect</button>
+  </div>
+
+  <div>
+    <label>Message:</label><br>
+    <input type="text" id="messageInput" placeholder="Type your message" />
+    <button onclick="sendShout()">Send Shout (Global)</button>
+    <button onclick="sendMessage()">Send Message</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <script>
+    let ws = null;
+
+    function authenticate() {
+      const token = document.getElementById('tokenInput').value;
+      
+      if (!token) {
+        alert('Please paste a JWT token');
+        return;
+      }
+
+      console.log("Connecting to WebSocket...");
+
+      ws = new WebSocket("ws://localhost:3000/ws");
+
+      ws.onopen = () => {
+        console.log("✅ WebSocket connected!");
+        addMessage("✅ Connected to server", "system");
+
+        ws.send(JSON.stringify({
+          type: 'auth',
+          token: token,
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("📩 Received:", data);
+
+        if (data.type === 'welcome_user') {
+          addMessage(`Server: ${data.message}`, "system");
+        } else if (data.type === 'global_message') {
+          addMessage(`${data.sender}: ${data.message}`, "message");
+        } else if (data.type === 'receiveMessage') {
+          addMessage(`${data.sender}: ${data.message}`, "message");
+        } else if (data.type === 'privateMessage') {
+          addMessage(`DM from ${data.sender}: ${data.message}`, "dm");
+        } else if (data.type === 'error') {
+          addMessage(`❌ Error: ${data.message}`, "error");
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("❌ WebSocket Error:", err);
+        addMessage("❌ WebSocket Error", "error");
+      };
+
+      ws.onclose = () => {
+        console.log("❌ WebSocket closed");
+        addMessage("❌ Disconnected from server", "system");
+      };
+    }
+
+    function sendShout() {
+      const message = document.getElementById('messageInput').value;
+      if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected or no message');
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'shout',
+        message: message,
+      }));
+
+      document.getElementById('messageInput').value = '';
+    }
+
+    function sendMessage() {
+      const message = document.getElementById('messageInput').value;
+      if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected or no message');
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'sendMessage',
+        message: message,
+      }));
+
+      document.getElementById('messageInput').value = '';
+    }
+
+    function addMessage(text, type) {
+      const messagesDiv = document.getElementById('messages');
+      const msgElement = document.createElement('div');
+      msgElement.className = 'message ' + type;
+      msgElement.textContent = text;
+      messagesDiv.appendChild(msgElement);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  </script>
+</body>
+</html>
