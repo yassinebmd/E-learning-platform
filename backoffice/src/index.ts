@@ -7,7 +7,7 @@ import { authGuardConfig } from "./middleware/auth";
 const userSocketMap = new Map<string, WebSocket>();
 const socketUsers = new Map<
   string,
-  { userId: string; name: string; role: string }
+  { userId: string; name: string; role: string;  }
 >();
 
 const allSockets = new Set<WebSocket>();
@@ -70,21 +70,65 @@ const appWithRoutes = app
 
       .post(
         "/login",
-        async ({ body, set, jwt: elysiaJwt, cookie }) => {
+        async ({ body, set, cookie }) => {
+          const MAX_ATTEMPTS = 5;
+          const LOCKOUT_DURATION_MS = 20 * 60 * 1000; 
           const user = await db.user.findUnique({
             where: { email: body.email },
           });
 
-          if (!user || !(await bcrypt.compare(body.password, user.password))) {
+          if (!user) {
             set.status = 401;
             return { error: "Invalid credentials" };
           }
 
-          const token = await elysiaJwt.sign({
-            userId: user.id,
-            role: user.role,
-            name: user.name,
-          });
+          if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+            set.status = 429; 
+            return {
+              error: `Account locked. Try again after ${user.lockoutUntil.toLocaleTimeString()}`,
+            };
+          }
+
+          const isPasswordValid = await bcrypt.compare(
+            body.password,
+            user.password
+          );
+          if (!isPasswordValid) {
+            const newAttempts = user.loginAttempts + 1;
+            let updateData: any = { loginAttempts: newAttempts };
+
+            if (newAttempts >= MAX_ATTEMPTS) {
+              updateData.lockoutUntil = new Date(
+                Date.now() + LOCKOUT_DURATION_MS
+              );
+            }
+
+            await db.user.update({
+              where: { id: user.id },
+              data: updateData,
+            });
+
+            set.status = 401;
+            return { error: "Invalid credentials" };
+          }
+          if (user.loginAttempts > 0 || user.lockoutUntil) {
+            await db.user.update({
+              where: { id: user.id },
+              data: {
+                loginAttempts: 0,
+                lockoutUntil: null, 
+              },
+            });
+          }
+
+          const token = jwt.sign(
+            {
+              userId: user.id,
+              role: user.role,
+              name: user.name,
+            },
+            JWT_SECRET
+          );
 
           cookie.auth.set({
             value: token,
@@ -240,8 +284,6 @@ const appWithRoutes = app
     },
   })
 
-
-  
   .listen(3000, (srv) => {
     console.log(
       `🦊 Elysia server running at http://${srv.hostname}:${srv.port}`
