@@ -7,8 +7,9 @@ export const db = new PrismaClient();
 
 export const app = new Elysia()
   .use(cors({
-    origin: '*',
+    origin: 'http://localhost:3001', 
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
   }))
   .use(swagger())
 

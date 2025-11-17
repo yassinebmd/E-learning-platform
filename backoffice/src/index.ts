@@ -150,25 +150,32 @@ const appWithRoutes = app
 
   // Authenticated routes
   .guard(authGuardConfig as any)
-  .get("/me", ({ user }) => user)
 
-  .post("/logout", ({ cookie, set }) => {
-    cookie.auth.set({
-      value: "",
-      httpOnly: true,
-      maxAge: 0,
-      path: "/",
-    });
 
-    set.status = 200;
-    return { message: "Logout successful" };
-  })
+  .get("/me", ( { user } ) => {
+  if (!user) {
+    return { error: "Not authenticated" };
+  }
+  return user;
+})
+
+ .post("/logout", async ({ cookie, set, request }) => {
+  cookie.auth.set({
+    value: '',
+    httpOnly: true,
+    maxAge: 0,
+    expires: new Date(0),
+    path: '/',
+  });
+  set.status = 204;
+  return;
+})
 
   //  WebSocket route
   .ws("/ws", {
     open(ws) {
       console.log(`🔗 WebSocket connected: ${ws.id}`);
-      allSockets.add(ws);
+      allSockets.add(ws as any);
     },
 
     message(ws, raw) {
@@ -201,7 +208,7 @@ const appWithRoutes = app
           role: payload.role,
         });
 
-        userSocketMap.set(payload.userId, ws);
+        userSocketMap.set(payload.userId, ws as any);
 
         console.log(`✅ User ${payload.name} authenticated on socket ${ws.id}`);
 
@@ -271,20 +278,20 @@ const appWithRoutes = app
         }
       }
     },
-
+    
     close(ws) {
       const info = socketUsers.get(ws.id);
 
       if (info) userSocketMap.delete(info.userId);
 
       socketUsers.delete(ws.id);
-      allSockets.delete(ws);
+      allSockets.delete(ws as any);
 
       console.log(`❌ WebSocket closed: ${ws.id}`);
     },
   })
 
-  .listen(3000, (srv) => {
+  .listen(5001, (srv) => {
     console.log(
       `🦊 Elysia server running at http://${srv.hostname}:${srv.port}`
     );

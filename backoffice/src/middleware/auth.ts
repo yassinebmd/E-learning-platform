@@ -1,17 +1,17 @@
-// middleware/auth.ts
+import jwt from "jsonwebtoken";
 import { db } from "../app";
 import type { Context } from "elysia";
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is not defined");
+}
+
 type AuthContext = Context & {
   cookie: {
-    auth: {
+    auth?: {
       value: string;
     };
-  };
-  jwt: {
-    verify: (
-      token: string
-    ) => Promise<false | { userId: string; role: "STUDENT" | "INSTRUCTOR" }>;
   };
   set: {
     status: number;
@@ -19,33 +19,33 @@ type AuthContext = Context & {
 };
 
 export const authGuardConfig = {
-  derive: async ({ cookie, jwt, set }: AuthContext) => {
-    if (!cookie?.auth?.value) {
+  derive: async ({ cookie, set }: AuthContext) => {
+    const token = cookie?.auth?.value;
+
+    if (!token) {
       set.status = 401;
       throw new Error("Unauthorized: No auth cookie");
     }
 
-    const profile = await jwt.verify(cookie.auth.value);
-    if (!profile || !profile.userId) {
+    let payload: { userId: string; role: "STUDENT" | "INSTRUCTOR" };
+
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as typeof payload;
+    } catch {
       set.status = 401;
       throw new Error("Unauthorized: Invalid token");
     }
 
-    try {
-      const user = await db.user.findUnique({
-        where: { id: profile.userId },
-      });
+    const user = await db.user.findUnique({
+      where: { id: payload.userId },
+    });
 
-      if (!user) {
-        set.status = 401;
-        throw new Error("Unauthorized: User not found");
-      }
-
-      const { password, ...userWithoutPassword } = user;
-      return { user: userWithoutPassword };
-    } catch (error) {
-      set.status = 500;
-      throw new Error("Internal server error");
+    if (!user) {
+      set.status = 401;
+      throw new Error("Unauthorized: User not found");
     }
+
+    const { password, ...userWithoutPassword } = user;
+    return { user: userWithoutPassword };
   },
 };
