@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { registerApi, RegisterData, UserRole } from "@/lib/api";
-
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,8 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Mail, Lock, User, AlertCircle, CheckCircle } from "lucide-react";
 
-import { UserPlus, Mail, Lock, User, Terminal } from "lucide-react";
+const API_BASE = "http://localhost:5001";
+
+interface RegisterData {
+  email: string;
+  password: string;
+  name: string;
+  role: "STUDENT" | "INSTRUCTOR";
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -34,147 +40,308 @@ export default function RegisterPage() {
     name: "",
     role: "STUDENT",
   });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
+    if (error) setError(null);
   };
 
-  const handleRoleChange = (value: UserRole) => {
+  const handleConfirmPasswordChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setConfirmPassword(e.target.value);
+    if (error) setError(null);
+  };
+
+  const handleRoleChange = (value: "STUDENT" | "INSTRUCTOR") => {
     setFormData({ ...formData, role: value });
+  };
+
+  const validateForm = () => {
+    if (!formData.name.trim()) {
+      return "Name is required";
+    }
+    if (formData.name.trim().length < 2) {
+      return "Name must be at least 2 characters";
+    }
+    if (!formData.email.trim()) {
+      return "Email is required";
+    }
+    if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      return "Please enter a valid email address";
+    }
+    if (!formData.password) {
+      return "Password is required";
+    }
+    if (formData.password.length < 6) {
+      return "Password must be at least 6 characters";
+    }
+    if (formData.password !== confirmPassword) {
+      return "Passwords do not match";
+    }
+    return null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await registerApi(formData);
-      router.push("/login");
+      console.log("Submitting registration data:", formData);
+
+      const response = await fetch(`${API_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        throw new Error("Registration failed");
+      }
+
+      console.log("Registration successful:", data);
+
+      setSuccess(true);
+
+      setTimeout(() => {
+        router.push("/login");
+      }, 1500);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Registration failed");
+      console.error("Registration error:", err);
+
+      let errorMessage = "Registration failed";
+
+      if (err.message && err.message.includes("already exists")) {
+        errorMessage =
+          "This email is already registered. Please use a different email.";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md z-10 bg-card/80 backdrop-blur-sm border-accent/20">
+    <div className="min-h-screen bg-gradient-to-b from-[#07070a] to-black flex items-center justify-center p-4">
+      <div className="fixed inset-0 opacity-[0.07] pointer-events-none">
+        <div className="h-full w-full bg-[radial-gradient(circle_at_1px_1px,#94a3b8_1px,transparent_0)] [background-size:28px_28px]" />
+      </div>
+
+      <Card className="w-full max-w-md z-10 bg-gradient-to-b from-slate-900/40 to-black/30 backdrop-blur-sm border border-slate-800/70">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Terminal size={40} className="text-accent" />
-          </div>
-          <CardTitle className="text-2xl font-ibm-plex-mono text-accent">
-            [ CREATE_ACCOUNT ]
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Create Account
           </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Join the Vulncore Cyber E-Learning Platform
+          <CardDescription className="text-slate-400">
+            Join our cybersecurity training platform
           </CardDescription>
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="font-ibm-plex-mono">
-                /name
-              </Label>
-              <div className="flex items-center space-x-2">
-                <User size={18} className="text-muted-foreground" />
-                <Input
-                  id="name"
-                  name="name"
-                  type="text"
-                  placeholder="Your Full Name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  className="bg-transparent"
-                />
+          {success ? (
+            <div className="flex flex-col items-center gap-4 py-6">
+              <CheckCircle size={48} className="text-emerald-500" />
+              <div className="text-center">
+                <p className="text-emerald-400 font-semibold mb-2">
+                  Account Created Successfully!
+                </p>
+                <p className="text-slate-400 text-sm">
+                  Redirecting to login page...
+                </p>
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="font-ibm-plex-mono">
-                /email
-              </Label>
-              <div className="flex items-center space-x-2">
-                <Mail size={18} className="text-muted-foreground" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="Your Email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="bg-transparent"
-                />
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-3">
+                <Label htmlFor="name" className="text-slate-300 font-medium">
+                  Full Name
+                </Label>
+                <div className="relative">
+                  <User
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"
+                    size={18}
+                  />
+                  <Input
+                    id="name"
+                    name="name"
+                    type="text"
+                    placeholder="John Doe"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                    className="pl-10 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
+                    minLength={2}
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="font-ibm-plex-mono">
-                /password
-              </Label>
-              <div className="flex items-center space-x-2">
-                <Lock size={18} className="text-muted-foreground" />
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Your Password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  className="bg-transparent"
-                />
+              <div className="space-y-3">
+                <Label htmlFor="email" className="text-slate-300 font-medium">
+                  Email Address
+                </Label>
+                <div className="relative">
+                  <Mail
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"
+                    size={18}
+                  />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="john@example.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                    className="pl-10 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role" className="font-ibm-plex-mono">
-                /role
-              </Label>
-              <Select onValueChange={handleRoleChange} defaultValue="STUDENT">
-                <SelectTrigger className="w-full bg-transparent">
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="STUDENT">Student</SelectItem>
-                  <SelectItem value="INSTRUCTOR">Instructor</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-3">
+                <Label
+                  htmlFor="password"
+                  className="text-slate-300 font-medium"
+                >
+                  Password
+                </Label>
+                <div className="relative">
+                  <Lock
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"
+                    size={18}
+                  />
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    disabled={loading}
+                    className="pl-10 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
+                    minLength={6}
+                  />
+                </div>
+              </div>
 
-            {error && (
-              <p className="text-sm text-red-500 font-ibm-plex-mono text-center">
-                {`> Error: ${error}`}
-              </p>
-            )}
+              <div className="space-y-3">
+                <Label
+                  htmlFor="confirmPassword"
+                  className="text-slate-300 font-medium"
+                >
+                  Confirm Password
+                </Label>
+                <div className="relative">
+                  <Lock
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"
+                    size={18}
+                  />
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={handleConfirmPasswordChange}
+                    required
+                    disabled={loading}
+                    className="pl-10 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
 
-            <Button
-              type="submit"
-              className="w-full font-bold bg-accent text-background hover:bg-accent/80"
-              disabled={loading}
-            >
-              {loading ? "Executing..." : "Register"}
-            </Button>
-          </form>
+              <div className="space-y-3">
+                <Label htmlFor="role" className="text-slate-300 font-medium">
+                  Role
+                </Label>
+                <Select
+                  onValueChange={handleRoleChange}
+                  defaultValue="STUDENT"
+                  disabled={loading}
+                >
+                  <SelectTrigger className="w-full bg-slate-900/50 border-slate-700/50 text-white">
+                    <SelectValue placeholder="Select your role" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-700 text-white">
+                    <SelectItem value="STUDENT">👨‍🎓 Student</SelectItem>
+                    <SelectItem value="INSTRUCTOR">👨‍🏫 Instructor</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Instructors have the ability to create and manage courses.
+                </p>
+              </div>
+
+              {error && (
+                <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/30">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle
+                      size={16}
+                      className="text-red-400 flex-shrink-0"
+                    />
+                    <p className="text-red-300 text-sm">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-xl shadow-lg shadow-blue-500/15 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Creating Account...
+                  </span>
+                ) : (
+                  "Create Account"
+                )}
+              </Button>
+            </form>
+          )}
         </CardContent>
 
-        <CardFooter className="text-center text-sm">
-          <p className="w-full text-muted-foreground">
-            Already have an account?
-            <Link href="/login" className="text-accent hover:underline ml-1">
-              Login Now
+        <CardFooter className="flex flex-col gap-4 pt-6 border-t border-slate-800/50">
+          <p className="text-slate-400 text-sm text-center">
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="text-blue-400 hover:text-blue-300 font-medium hover:underline"
+            >
+              Sign In
             </Link>
           </p>
+
+          <div className="text-xs text-slate-500 text-center space-y-1">
+            <p>🔒 Your data is secured and encrypted</p>
+            <p>📚 Access hands-on cybersecurity courses</p>
+          </div>
         </CardFooter>
       </Card>
     </div>

@@ -6,10 +6,21 @@ import {
   useState,
   useEffect,
   ReactNode,
+  useCallback,
 } from "react";
 import { useRouter } from "next/navigation";
-import { getMeApi, loginApi, LoginData, logoutApi, User } from "@/lib/api";
-import { AxiosError } from "axios";
+
+interface User {
+  userId: string;
+  name: string;
+  email: string;
+  role: "STUDENT" | "INSTRUCTOR";
+}
+
+interface LoginData {
+  email: string;
+  password: string;
+}
 
 interface IAuthContext {
   user: User | null;
@@ -26,12 +37,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const fetchUserFromApi = useCallback(async (token: string) => {
+    try {
+      const response = await fetch("http://localhost:5001/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          const currentUser = data.user as User;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+          setUser(currentUser);
+          return currentUser;
+        }
+      }
+      throw new Error("Invalid session");
+    } catch (error) {
+      console.error("Fetching user failed:", error);
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     const checkUserSession = async () => {
+      setLoading(true);
+
+      if (typeof window === "undefined") {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const response = await getMeApi();
-        setUser(response.data);
+        const token = localStorage.getItem("token");
+        const storedUser = localStorage.getItem("user");
+
+        if (!token) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser) as User;
+            setUser(parsedUser);
+          } catch (e) {
+            localStorage.removeItem("user");
+          }
+        }
+
+        const currentUser = await fetchUserFromApi(token);
+        if (!currentUser) {
+          setUser(null);
+        }
       } catch (error) {
+        console.error("Session check failed:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
         setUser(null);
       } finally {
         setLoading(false);
@@ -39,32 +105,71 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     checkUserSession();
+  }, [fetchUserFromApi]);
+
+  const login = useCallback(async (data: LoginData) => {
+    try {
+      const response = await fetch("http://localhost:5001/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      const res = await response.json();
+
+      if (!response.ok) {
+        const error: any = new Error(res.error || "Login failed");
+        error.locked = res.locked;
+        error.lockoutUntil = res.lockoutUntil;
+        error.attemptsLeft = res.attemptsLeft;
+        throw error;
+      }
+
+      if (!res.success) {
+        const error: any = new Error(res.error || "Login failed");
+        error.locked = res.locked;
+        error.lockoutUntil = res.lockoutUntil;
+        error.attemptsLeft = res.attemptsLeft;
+        throw error;
+      }
+
+      const { token, user: userData } = res;
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(userData));
+      setUser(userData as User);
+
+      if (userData.role === "STUDENT") {
+        window.location.href = "/courses";
+      } else {
+        window.location.href = "/dashboard/instructor/courses";
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+      throw err;
+    }
   }, []);
 
-  const login = async (data: LoginData) => {
+  const logout = useCallback(async () => {
     try {
-      await loginApi(data);
-      const response = await getMeApi();
-      setUser(response.data);
-      router.push("/dashboard");
-    } catch (err) {
-      const error = err as AxiosError;
-
-      throw error;
-    }
-  };
-
-  const logout = async () => {
-    try {
-      await logoutApi();
+      const token = localStorage.getItem("token");
+      if (token) {
+        await fetch("http://localhost:5001/api/auth/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
     } catch (error) {
-      console.warn("Logout API failed (optional)", error);
+      console.warn("Logout API failed:", error);
     } finally {
       setUser(null);
-      router.push("/login");
-      router.refresh();
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
     }
-  };
+  }, []);
 
   const value = {
     user,

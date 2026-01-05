@@ -1,44 +1,65 @@
 import axios from "axios";
 
-const ROLES = {
-  STUDENT: "STUDENT",
-  INSTRUCTOR: "INSTRUCTOR",
-} as const;
-
-export type RegisterData = {
+export interface LoginData {
   email: string;
   password: string;
+}
+
+export interface RegisterData {
   name: string;
-  role: keyof typeof ROLES;
-};
-
-export type LoginData = {
   email: string;
   password: string;
-};
+}
+
+export interface User {
+  userId: string;
+  name: string;
+  email: string;
+  role: "STUDENT" | "INSTRUCTOR";
+}
 
 const apiClient = axios.create({
-  baseURL: "http://localhost:5001",
+  baseURL: "http://localhost:5001/api",
   withCredentials: true,
 });
 
-export const registerApi = async (data: RegisterData) => {
-  return apiClient.post("/auth/register", data);
-};
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
-export const loginApi = async (data: LoginData) => {
-  return apiClient.post("/auth/login", data);
-};
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
 
-export const getMeApi = async () => {
-  return apiClient.get("/me");
-};
+export const loginApi = (data: LoginData) =>
+  apiClient.post("/auth/login", data);
+export const logoutApi = () => apiClient.post("/auth/logout");
+export const getMeApi = () => apiClient.get("/auth/me");
+export const registerApi = (data: RegisterData) =>
+  apiClient.post("/auth/register", data);
 
-export const logoutApi = async () => {
-  return apiClient.post("/logout");
-};
+export const fetchMyCoursesApi = () => apiClient.get("/courses/my");
+export const createCourseApi = (data: any) => apiClient.post("/courses", data);
+export const updateCourseApi = (id: string, data: any) =>
+  apiClient.patch(`/courses/${id}`, data);
+export const deleteCourseApi = (id: string) =>
+  apiClient.delete(`/courses/${id}`);
 
-export const User = {
-  STUDENT: "STUDENT",
-  INSTRUCTOR: "INSTRUCTOR",
-} as const;
+export const fetchLessonsApi = (courseId: string) =>
+  apiClient.get(`/lessons/${courseId}`);
+export const createLessonApi = (data: any) => apiClient.post("/lessons", data);
+export const updateLessonApi = (id: string, data: any) =>
+  apiClient.patch(`/lessons/${id}`, data);
+export const deleteLessonApi = (id: string) =>
+  apiClient.delete(`/lessons/${id}`);
